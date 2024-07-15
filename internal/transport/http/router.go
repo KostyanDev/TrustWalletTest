@@ -1,22 +1,10 @@
 package http
 
 import (
-	"fmt"
-	"net/http"
+	"github.com/gorilla/mux"
 )
 
-func RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/", handleRoot)
-}
-
-// handleRoot обработчик для корневого маршрута
-func handleRoot(w http.ResponseWriter, r *http.Request) {
-	defer handleError(w)
-}
-
-// handleError обрабатывает ошибки и отправляет сообщение об ошибке в ответ
-func handleError(w http.ResponseWriter) {
-	if r := recover(); r != nil {
-		http.Error(w, fmt.Sprintf("Internal Server Error: %v", r), http.StatusInternalServerError)
-	}
+func RegisterRoutes(router *mux.Router, handler *Handler) {
+	router.HandleFunc("/subscribe", handler.Subscribe).Methods("GET")
+	router.HandleFunc("/transactions", handler.GetTransactions).Methods("GET")
 }

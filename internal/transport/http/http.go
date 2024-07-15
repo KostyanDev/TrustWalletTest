@@ -2,34 +2,24 @@ package http
 
 import (
 	"context"
-	"log"
-	"net/http"
-	"time"
+
+	"1/internal/service"
+
+	"1/internal/domain"
 )
 
-type Server struct {
-	server *http.Server
-	logger *log.Logger
+type Service interface {
+	GetCurrentBlockService(ctx context.Context) (int, error)
+	SubscribeService(ctx context.Context, address string) bool
+	GetTransactionsService(ctx context.Context, address string) ([]domain.Transaction, error)
 }
 
-type ServerConfig struct {
-	Addr         string
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
+type Handler struct {
+	service Service
 }
 
-func NewServer(server *http.Server, logger *log.Logger) *Server {
-	return &Server{
-		server: server,
-		logger: logger,
+func New(service *service.Service) *Handler {
+	return &Handler{
+		service: service,
 	}
-}
-
-func (s *Server) ListenAndServe() error {
-	s.logger.Printf("Listening on %s", s.server.Addr)
-	return s.server.ListenAndServe()
-}
-
-func (s *Server) Shutdown(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
 }

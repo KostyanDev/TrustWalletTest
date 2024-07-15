@@ -1,19 +1,15 @@
 package main
 
 import (
-	"context"
 	"log"
+	"os"
 
 	"1/internal/app"
 )
 
 func main() {
-	appInstance, err := app.InitializeApp()
-	if err != nil {
-		log.Fatalf("error creating app: %s\n", err)
+	if err := app.Run(); err != nil {
+		log.Fatal(err)
 	}
-
-	if err = appInstance.Run(context.Background()); err != nil {
-		log.Fatalf("error running app: %s\n", err)
-	}
+	os.Exit(0)
 }

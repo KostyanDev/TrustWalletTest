@@ -2,62 +2,61 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"golang.org/x/sync/errgroup"
+	"github.com/gorilla/mux"
 
+	"1/internal/adapter/ethereum"
 	"1/internal/config"
 	"1/internal/service"
 	httpServer "1/internal/transport/http"
 )
 
-type App struct {
-	svc    *service.Service
-	cfg    config.Config
-	logger *log.Logger
-	server *httpServer.Server
-}
+func Run() error {
+	cfg, err := config.New[config.Config]()
+	if err != nil {
+		return err
+	}
 
-func (a *App) Run(ctx context.Context) error {
-	a.logger.Println("Starting application")
+	trustAdapter := ethereum.NewEthereumAdapter(cfg.Ethereum.Endpoint)
+	trustService := service.New(cfg, trustAdapter)
+	handler := httpServer.New(trustService)
+	router := mux.NewRouter()
+	httpServer.RegisterRoutes(router, handler)
 
-	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+	srv := &http.Server{
+		Addr:    fmt.Sprintf("%s:%d", cfg.HTTPServer.Host, cfg.HTTPServer.Port),
+		Handler: router,
+	}
+	stopped := make(chan struct{})
 
-	group, ctx := errgroup.WithContext(ctx)
-
-	group.Go(func() error {
-		a.logger.Printf("Starting HTTP server on host,port - %s:%d\n", a.cfg.HTTPServer.Host, a.cfg.HTTPServer.Port)
-		if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			a.logger.Fatalf("Could not listen on host,port - %s,%d: %v\n", a.cfg.HTTPServer.Host, a.cfg.HTTPServer.Port, err)
-			return err
-		}
-		return nil
-	})
-
-	group.Go(func() error {
-		<-ctx.Done()
-		a.logger.Println("Shutting down HTTP server...")
-
-		ctxShutDown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	go func() {
+		sigint := make(chan os.Signal, 1)
+		signal.Notify(sigint, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+		<-sigint
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-
-		if err := a.server.Shutdown(ctxShutDown); err != nil {
-			a.logger.Fatalf("HTTP server Shutdown Failed:%+v", err)
-			return err
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("HTTP Server Shutdown Error: %v", err)
 		}
-
-		a.logger.Println("HTTP server stopped")
-		return nil
-	})
-
-	defer func() {
-		a.logger.Println("Application stopped")
+		close(stopped)
 	}()
 
-	return group.Wait()
+	log.Printf("Starting HTTP server on %s", fmt.Sprintf("%s:%d", cfg.HTTPServer.Host, cfg.HTTPServer.Port))
+
+	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+		log.Fatalf("HTTP server ListenAndServe Error: %v", err)
+	}
+
+	<-stopped
+
+	log.Printf("Have a nice day!")
+
+	return nil
 }
